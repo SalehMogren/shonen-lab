@@ -20,6 +20,12 @@ Create a separate profile for each squad/product pair. No database, project, pro
 
 Run `$verify-tracking-events`. The skill finds tracking-plan cells marked `QA`, queries observed PostHog traffic, presents evidence for every event/platform result, and previews the scoped Notion changes.
 
+The workflow uses explicit gates:
+
+- **Source gate:** the Notion schema and observed PostHog platform values agree with the profile.
+- **Evidence gate:** every QA-marked event × platform cell receives one verdict with supporting evidence.
+- **Write gate:** exact field changes are previewed, authorized, applied, and re-read.
+
 Default thresholds are a 90-day lookback, activity within 14 days, and at least 10 matching events for the standard Live verdict. Setup can override them per profile.
 
 ## Safety boundaries
@@ -27,3 +33,11 @@ Default thresholds are a 90-day lookback, activity within 14 days, and at least 
 - Only configured verification fields are eligible for write-back.
 - Jira follow-up is optional and requires explicit user authorization.
 - Credentials, event payloads, and customer data are never written to profiles, reports, Notion, or Jira.
+
+## Development
+
+Run the profile-manager feedback loop with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```

@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -15,6 +14,12 @@ from typing import Any
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "tracking-event-qa" / "profiles.json"
 PROFILE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+DEFAULT_PLATFORM_VALUES = {
+    "web": ["web"],
+    "app": ["posthog-react-native"],
+    "backend": ["posthog-node", "posthog-python", "posthog-php", "posthog-go"],
+}
+SUPPORTED_PLATFORMS = frozenset(DEFAULT_PLATFORM_VALUES)
 
 
 def load_store(path: Path) -> dict[str, Any]:
@@ -55,10 +60,48 @@ def validate_profile(name: str, profile: Any) -> None:
         raise SystemExit(f"Profile {name!r} needs notion.source.")
     if not isinstance(posthog, dict) or not posthog.get("project_id"):
         raise SystemExit(f"Profile {name!r} needs posthog.project_id.")
+    if not posthog.get("platform_property"):
+        raise SystemExit(f"Profile {name!r} needs posthog.platform_property.")
+    validate_platform_values(name, posthog.get("platform_values"))
     thresholds = posthog.get("thresholds", {})
     for field in ("lookback_days", "recency_days", "live_volume"):
         if int(thresholds.get(field, 0)) <= 0:
             raise SystemExit(f"Profile {name!r} needs a positive posthog.thresholds.{field}.")
+    if int(thresholds["recency_days"]) > int(thresholds["lookback_days"]):
+        raise SystemExit(f"Profile {name!r} needs recency_days <= lookback_days.")
+
+
+def validate_platform_values(name: str, value: Any) -> None:
+    if not isinstance(value, dict) or not value:
+        raise SystemExit(f"Profile {name!r} needs a non-empty posthog.platform_values object.")
+    mapped_values = 0
+    for platform, values in value.items():
+        if not isinstance(platform, str) or not platform.strip():
+            raise SystemExit(f"Profile {name!r} has an invalid platform name.")
+        if platform not in SUPPORTED_PLATFORMS:
+            supported = ", ".join(sorted(SUPPORTED_PLATFORMS))
+            raise SystemExit(f"Profile {name!r} platform {platform!r} is unsupported; use {supported}.")
+        if not isinstance(values, list):
+            raise SystemExit(f"Profile {name!r} platform {platform!r} must map to a list.")
+        if any(not isinstance(item, str) or not item.strip() for item in values):
+            raise SystemExit(f"Profile {name!r} platform {platform!r} has an invalid value.")
+        if len(values) != len(set(values)):
+            raise SystemExit(f"Profile {name!r} platform {platform!r} has duplicate values.")
+        mapped_values += len(values)
+    if mapped_values == 0:
+        raise SystemExit(f"Profile {name!r} needs at least one mapped platform value.")
+
+
+def parse_platform_values(value: str) -> dict[str, list[str]]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(f"platform values must be valid JSON: {exc.msg}") from exc
+    try:
+        validate_platform_values("candidate", parsed)
+    except SystemExit as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    return parsed
 
 
 def atomic_write(path: Path, data: dict[str, Any]) -> None:
@@ -97,11 +140,8 @@ def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "project_name": args.posthog_project_name,
             "project_id": str(args.posthog_project_id),
             "platform_property": args.platform_property,
-            "platform_values": {
-                "web": ["web"],
-                "app": ["posthog-react-native"],
-                "backend": ["posthog-node", "posthog-python", "posthog-php", "posthog-go"],
-            },
+            "platform_values": args.platform_values_json
+            or {key: list(values) for key, values in DEFAULT_PLATFORM_VALUES.items()},
             "thresholds": {
                 "lookback_days": args.lookback_days,
                 "recency_days": args.recency_days,
@@ -117,6 +157,8 @@ def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
 
 def command_save(args: argparse.Namespace) -> None:
     store = load_store(args.config_path)
+    if args.name in store["profiles"] and not args.replace:
+        raise SystemExit(f"Profile {args.name!r} already exists; pass --replace to update it.")
     profile = profile_from_args(args)
     validate_profile(args.name, profile)
     store["profiles"][args.name] = profile
@@ -195,10 +237,16 @@ def build_parser() -> argparse.ArgumentParser:
     save.add_argument("--qa-value", default="QA")
     save.add_argument("--live-value", default="Live")
     save.add_argument("--platform-property", default="$lib")
+    save.add_argument(
+        "--platform-values-json",
+        type=parse_platform_values,
+        help='Observed mapping as JSON, for example {"web":["web"],"app":["mobile"]}.',
+    )
     save.add_argument("--lookback-days", type=int, default=90)
     save.add_argument("--recency-days", type=int, default=14)
     save.add_argument("--live-volume", type=int, default=10)
     save.add_argument("--activate", action="store_true")
+    save.add_argument("--replace", action="store_true", help="Replace an existing profile with the same name.")
     save.set_defaults(func=command_save)
 
     listing = subparsers.add_parser("list", help="List profiles.")

@@ -1,44 +1,38 @@
 ---
 name: verify-tracking-events
-description: Verify tracking-plan event/platform cells marked QA against real PostHog traffic, classify them with evidence, and update the configured Notion tracking plan. Use for analytics QA, instrumentation audits, checking whether events are live, or moving tracking statuses from QA to Live.
+description: Verify Notion tracking-plan cells marked QA against observed PostHog traffic, classify every event/platform result with evidence, and optionally write scoped results back. Use for analytics QA, instrumentation audits, event launch checks, or QA-to-Live review.
 ---
 
 # Verify Tracking Events
 
-Verify each configured **event × platform** cell marked QA against observed PostHog traffic. Produce an evidence-backed report and, when authorized and supported, write the result back to the configured Notion tracking plan.
+A **cell** is one event × platform status marked QA. Verification is complete only when every in-scope cell has one evidence-backed verdict.
 
-## Load the profile
+Read [operating-guardrails.md](../../references/operating-guardrails.md) before connector calls or writes. Read [verification-rules.md](../../references/verification-rules.md) before classification.
 
-1. Run `python3 ../../scripts/manage_profiles.py show` from this skill directory, or pass `--name <profile>` when the user specifies a profile.
-2. If there is no profile, perform the essential first-run flow from `$setup-tracking-event-qa` before querying data. Do not fall back to a hardcoded product, squad, Notion database, or PostHog project.
-3. State the selected profile and thresholds at the start of the report.
+## Profile gate
 
-## Verification workflow
+1. Run `python3 ../../scripts/manage_profiles.py show` from this skill directory, or pass `--name <profile>` when the user names one.
+2. When no valid profile exists, invoke `setup-tracking-event-qa`; the verifier has no implicit fallback source.
+3. State the selected squad/product, Notion source, PostHog project, platform mapping, and thresholds.
 
-1. Query the configured Notion source for rows whose configured App or Web status equals the configured QA value. Collect the page ID needed for write-back. Do not touch earlier workflow states.
-2. Exclude non-PostHog-only rows from failure classification. Report them as out of scope.
-3. Read the PostHog event taxonomy once, normalize escaped event names, and diff it against the QA list. Absent names are `Failed — never fired`; preserve any suggested-name hints.
-4. Confirm the configured platform discriminator and actual values from a real event before classification.
-5. Batch events in aggregate HogQL queries of roughly 30 names. Group by event and the configured platform property, returning count, first seen, and last seen within the configured lookback window.
-6. Classify every QA cell using [verification-rules.md](../../references/verification-rules.md). Every verdict needs count and dates or a precise non-volume reason.
-7. Present the report in this order:
-   - timestamp, profile, PostHog project, lookback, exact query shape, and platform mapping;
-   - recommended QA → Live table;
-   - flagged results grouped by reason;
-   - summary counts;
-   - write-back status.
+The profile gate passes when the selected profile validates and both configured sources are accessible.
 
-## Write-back and follow-up
+## Evidence gate
 
-- Before mutating Notion, summarize the rows and fields that will change. Treat the user's request to verify and update as authorization only for the configured verification fields.
-- Change only the QA'd platform status. Set Last Verified, a concise evidence note, and a PostHog reproduce URL when the tools return one. Never assign a person automatically.
-- If a write tool is unavailable, return an apply-ready update list and say that write-back was not performed.
-- Offer Jira follow-up for Failed results. Create Jira issues only when the user explicitly asks, using the configured project key if present.
-- Never store or expose credentials in Notion, reports, Jira, or the local profile.
+1. Query the configured Notion source for App/Web cells whose status equals the profile's QA value. Preserve each page ID for possible write-back.
+2. Separate non-PostHog-only cells as `Unverifiable`; they are outside the PostHog proof path.
+3. Read the event taxonomy once, normalize escaped event names, and diff it against the QA event names.
+4. Reconfirm the configured platform property and values against a real event.
+5. Batch aggregate queries by roughly 30 event names. Return event name, platform value, count, first seen, and last seen within the configured lookback.
+6. Apply the verdict precedence and evidence contract in `verification-rules.md` to every cell.
 
-## Required judgment
+The evidence gate passes when every in-scope cell has exactly one verdict plus count and dates, or a precise non-volume reason. Present the profile, timestamp, query shape, platform mapping, Live candidates, flagged cells by reason, and summary counts.
 
-- Wrong-platform evidence takes precedence over low volume.
-- Treat failure-path events (`*_failed`, `*_error`) with extra scrutiny.
-- Low-volume events can include internal or tester traffic; flag them for a sanity check before interpreting them as healthy product usage.
-- A database link that does not contain event names and per-platform QA statuses is the wrong source. Stop and request the correct source rather than verifying unrelated content.
+## Write gate
+
+1. Preview the exact pages, properties, old values, and new values.
+2. Apply only the authorized fields after explicit confirmation.
+3. Re-read changed rows and report the confirmed values. When writes are unavailable, return an apply-ready change list.
+4. Offer optional Jira follow-up for failed cells; create issues only after a separate explicit request.
+
+The write gate passes when every intended row is re-read successfully, unrelated fields remain untouched, and failures or unavailable writes are reported precisely.

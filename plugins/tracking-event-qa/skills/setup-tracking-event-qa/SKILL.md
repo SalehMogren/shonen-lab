@@ -1,44 +1,32 @@
 ---
 name: setup-tracking-event-qa
-description: Configure or switch a reusable squad/product profile for tracking-event QA by connecting a Notion tracking database to a PostHog project, with optional Jira follow-up settings. Use when setting up, configuring, onboarding, changing, or listing tracking QA profiles.
+description: Configure, inspect, switch, or repair a tracking-event QA profile that maps one squad/product to a Notion tracking plan and PostHog project. Use when onboarding the plugin, changing sources or field/platform mappings, tuning thresholds, or listing profiles.
 ---
 
 # Set Up Tracking Event QA
 
-Create a reusable, non-secret profile for a squad and product. A profile points the verifier to the correct Notion tracking database and PostHog project and records the database field mappings and acceptance thresholds.
+A profile is the verifier's source of truth for routing, field mappings, platform values, and thresholds.
 
-## Boundaries
+Read [operating-guardrails.md](../../references/operating-guardrails.md) before connector calls or profile writes. Read [profile-schema.md](../../references/profile-schema.md) when creating or changing a profile.
 
-- Never store access tokens, API keys, passwords, cookies, or credential references in the profile.
-- Use the user's already connected Notion, PostHog, and optional Jira tools. If a required connector is unavailable, explain which connection is missing and stop before saving an unverified profile.
-- Jira is optional and is only used after verification when the user explicitly asks to create follow-up work.
-- Do not change the Notion database schema during setup unless the user separately authorizes that change.
-
-## First-run setup
+## Source gate
 
 1. Run `python3 ../../scripts/manage_profiles.py list --json` from this skill directory.
-2. Ask for any missing essentials in one compact prompt:
-   - profile name in lowercase hyphen-case;
-   - squad name and product name;
-   - Notion database/data-source URL or ID;
-   - PostHog project name and ID;
-   - optional Jira project key.
-3. Fetch the Notion source and confirm that it is the database containing one row per tracking event. Inspect its schema and detect these roles:
-   - event name;
-   - App and/or Web status;
-   - tracking platform/provider;
-   - assignee, last verified, verification note, and PostHog reproduce link when present.
-4. Confirm PostHog access to the selected project. Read the event schema once and inspect a real event's platform property. Prefer `$lib`, but use the verified property/value mapping if the project differs.
-5. Show the detected mapping and the default thresholds before saving:
-   - 90-day lookback;
-   - last seen within 14 days;
-   - at least 10 events for the standard Live verdict.
-   Ask only about ambiguous mappings or requested threshold changes.
-6. Save and activate the profile with `python3 ../../scripts/manage_profiles.py save ... --activate`, passing the confirmed field names. The command stores the profile at `~/.config/tracking-event-qa/profiles.json` with restrictive file permissions.
-7. Run `python3 ../../scripts/manage_profiles.py validate`, then report the profile name, source, project, field mapping, thresholds, and whether Jira is configured.
+2. Collect only missing inputs: profile name, squad, product, Notion source, PostHog project name and ID, and optional Jira project key.
+3. Fetch the Notion source. Confirm one row represents one tracking event, then resolve the event name, App/Web status, tracking provider, verification note, last verified, and reproduce-link fields that exist.
+4. Confirm access to the PostHog project. Inspect a real event to identify the platform property and the observed values for every Notion platform being configured.
 
-## Multiple products or squads
+The source gate passes when both sources are accessible, the Notion field roles are unambiguous, and real PostHog data proves the platform mapping. Stop at the unresolved source or mapping when it does not pass.
 
-Create one profile per product/squad combination. Use `list`, `show`, and `activate` to inspect or switch profiles. Do not overwrite another profile unless the user asks to update that named profile.
+## Save gate
 
-For the exact profile fields and command example, read [profile-schema.md](../../references/profile-schema.md).
+1. Show the candidate profile, including source IDs, mappings, and thresholds. Default to a 90-day lookback, 14-day recency window, and Live volume of 10.
+2. Resolve ambiguous fields or requested threshold changes. A profile name already present requires explicit confirmation to replace.
+3. Save and activate with `python3 ../../scripts/manage_profiles.py save ... --activate`. Pass the observed mapping through `--platform-values-json`; use `--replace` only after replacement is confirmed.
+4. Run `python3 ../../scripts/manage_profiles.py validate`, then `show --name <profile>`.
+
+The save gate passes when validation succeeds and `show` matches the confirmed source IDs, field mapping, platform values, and thresholds. Report that evidence and whether Jira is configured.
+
+## Existing profiles
+
+Use `list`, `show`, and `activate` to inspect or switch profiles. Keep one profile per squad/product pair so changing one product never changes another profile.
