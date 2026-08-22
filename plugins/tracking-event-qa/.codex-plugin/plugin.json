@@ -1,0 +1,24 @@
+{
+  "name": "tracking-event-qa",
+  "version": "0.1.0",
+  "description": "Configure and verify product analytics tracking events against PostHog, with Notion write-back and optional Jira follow-up.",
+  "author": {
+    "name": "Plugin Contributors"
+  },
+  "keywords": ["analytics", "qa", "tracking", "posthog", "notion", "jira"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Tracking Event QA",
+    "shortDescription": "Verify QA analytics events with evidence.",
+    "longDescription": "Create reusable squad and product profiles, then verify tracking-plan events marked QA against real PostHog traffic per platform. Write evidence back to Notion and prepare optional Jira follow-ups without storing credentials.",
+    "developerName": "Plugin Contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "Set up tracking QA for a squad and product.",
+      "Verify all tracking events currently marked QA.",
+      "Show the failed tracking events and their evidence."
+    ],
+    "brandColor": "#7C3AED"
+  }
+}

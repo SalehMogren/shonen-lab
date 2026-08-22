@@ -1,0 +1,20 @@
+{
+  "name": "shonen-lab",
+  "interface": {
+    "displayName": "Shonen Lab"
+  },
+  "plugins": [
+    {
+      "name": "tracking-event-qa",
+      "source": {
+        "source": "local",
+        "path": "./plugins/tracking-event-qa"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+interface:
+  display_name: "Verify Tracking Events"
+  short_description: "Check QA events against real PostHog traffic."
+  brand_color: "#7C3AED"
+  default_prompt: "Use $verify-tracking-events to verify all tracking events currently marked QA."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "notion"
+      description: "Read and update the configured tracking-plan database."
+    - type: "mcp"
+      value: "posthog"
+      description: "Inspect event taxonomy and query observed event traffic."
+policy:
+  allow_implicit_invocation: true

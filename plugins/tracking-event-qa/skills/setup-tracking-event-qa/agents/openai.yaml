@@ -1,0 +1,15 @@
+interface:
+  display_name: "Set Up Tracking Event QA"
+  short_description: "Connect a tracking plan to its analytics project."
+  brand_color: "#7C3AED"
+  default_prompt: "Use $setup-tracking-event-qa to configure tracking QA for my squad and product."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "notion"
+      description: "Read the tracking-plan database and confirm its schema."
+    - type: "mcp"
+      value: "posthog"
+      description: "Confirm the selected analytics project and platform taxonomy."
+policy:
+  allow_implicit_invocation: true
