@@ -17,6 +17,16 @@ Shonen Lab is a growing marketplace of reusable Codex plugins and skills for pro
 
 > 🛡️ **Built to travel safely:** plugins stay organization-independent. Workspace databases, project IDs, URLs, credentials, customer data, and product-specific configuration never belong in repository files; setup happens at first run.
 
+## 🌌 Inside the lab
+
+<div align="center">
+
+<img src="assets/shonen-lab-team.jpg" alt="An original anime-inspired cross-functional team building AI tools together in Shonen Lab" width="100%">
+
+<sub>Original Shonen Lab artwork—five roles, one glowing workbench, unlimited power-ups. ✨</sub>
+
+</div>
+
 ## 🦸 Choose your power-up
 
 ![Power-ups for PM, PE, SWE, QA, and Analytics](assets/team-powerups.svg)
