@@ -38,11 +38,26 @@ class ManageProfilesTests(unittest.TestCase):
             *extra,
         ]
 
+    def stream_command(self, *extra: str) -> list[str]:
+        return self.save_command(
+            "--stream-dataset",
+            "sample-stream",
+            "--stream-platform-field",
+            "source",
+            "--stream-platform-values-json",
+            json.dumps({"web": ["example.test"], "app": ["app.example.test"]}),
+            *extra,
+        )
+
     def run_command(self, command: list[str], *, succeeds: bool = True) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         if succeeds and result.returncode != 0:
             self.fail(f"Command failed: {result.stderr or result.stdout}")
         return result
+
+    def read_profile(self) -> dict:
+        store = json.loads(self.config_path.read_text(encoding="utf-8"))
+        return store["profiles"]["sample-profile"]
 
     def test_saves_observed_platform_mapping_with_private_permissions(self) -> None:
         mapping = {"web": ["client-web"], "app": ["client-mobile"]}
@@ -79,6 +94,63 @@ class ManageProfilesTests(unittest.TestCase):
         )
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("at least one mapped platform value", rejected.stderr)
+
+    def test_profile_without_stream_channel_stays_valid(self) -> None:
+        self.run_command(self.save_command())
+        self.assertNotIn("stream", self.read_profile())
+        validated = self.run_command(
+            [sys.executable, str(SCRIPT), "validate", "--config-path", str(self.config_path)]
+        )
+        self.assertIn('"profiles_with_stream_channel": 0', validated.stdout)
+
+    def test_saves_stream_channel_with_key_value_shape(self) -> None:
+        self.run_command(
+            self.stream_command(
+                "--stream-property-key-field",
+                "data_key",
+                "--stream-property-value-field",
+                "string_value",
+                "--stream-key-prefixes-json",
+                json.dumps({"web": "attributes.", "app": ""}),
+                "--stream-excluded-values",
+                "staging.example.test, localhost",
+            )
+        )
+
+        stream = self.read_profile()["stream"]
+        self.assertEqual(stream["dataset"], "sample-stream")
+        self.assertEqual(stream["platform_values"]["app"], ["app.example.test"])
+        self.assertEqual(stream["property_key_prefixes"], {"web": "attributes.", "app": ""})
+        self.assertEqual(stream["excluded_platform_values"], ["staging.example.test", "localhost"])
+
+    def test_stream_key_field_requires_a_value_field(self) -> None:
+        rejected = self.run_command(
+            self.stream_command("--stream-property-key-field", "data_key"),
+            succeeds=False,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("stream.property_value_field", rejected.stderr)
+
+    def test_stream_cannot_exclude_a_mapped_platform_value(self) -> None:
+        rejected = self.run_command(
+            self.stream_command("--stream-excluded-values", "app.example.test"),
+            succeeds=False,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("excludes mapped platform values", rejected.stderr)
+
+    def test_stream_platform_mapping_must_use_supported_platforms(self) -> None:
+        rejected = self.run_command(
+            self.save_command(
+                "--stream-dataset",
+                "sample-stream",
+                "--stream-platform-values-json",
+                '{"kiosk":["kiosk.example.test"]}',
+            ),
+            succeeds=False,
+        )
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("unsupported", rejected.stderr)
 
 
 if __name__ == "__main__":

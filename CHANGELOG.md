@@ -1,5 +1,14 @@
 # Marketplace changelog
 
+## 0.3.0 — 2026-09-13
+
+- Added multi-channel verification: a tracking plan can route an event to product analytics, to a second event stream, or to both.
+- Added a channel gate that resolves required and excluded channels from the plan's routing column before any volume query.
+- Added wrong-channel and value-mismatch verdicts, and made channel evidence outrank volume evidence.
+- Added optional stream-channel configuration for key/value datasets, per-platform property prefixes, and excluded staging hosts.
+- Added value-parity checks across platforms, so matching property names alone no longer qualify a cell for Live.
+- Added a privacy boundary for raw stream rows and a rule against rewriting the plan's routing column to match observed traffic.
+
 ## 0.2.0 — 2026-08-22
 
 - Added source, evidence, save, and write completion gates.
