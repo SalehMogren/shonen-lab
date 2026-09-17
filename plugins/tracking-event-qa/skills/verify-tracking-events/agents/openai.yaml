@@ -1,6 +1,6 @@
 interface:
   display_name: "Verify Tracking Events"
-  short_description: "Check QA events against real PostHog traffic."
+  short_description: "Prove QA events on every channel the plan requires."
   brand_color: "#7C3AED"
   default_prompt: "Use $verify-tracking-events to verify all tracking events currently marked QA."
 dependencies:
@@ -11,5 +11,8 @@ dependencies:
     - type: "mcp"
       value: "posthog"
       description: "Inspect event taxonomy and query observed event traffic."
+    - type: "mcp"
+      value: "event-stream"
+      description: "Optional. Query the second tracking channel when the profile configures one."
 policy:
   allow_implicit_invocation: true

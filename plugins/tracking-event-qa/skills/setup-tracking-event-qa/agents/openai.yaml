@@ -1,6 +1,6 @@
 interface:
   display_name: "Set Up Tracking Event QA"
-  short_description: "Connect a tracking plan to its analytics project."
+  short_description: "Connect a tracking plan to its tracking channels."
   brand_color: "#7C3AED"
   default_prompt: "Use $setup-tracking-event-qa to configure tracking QA for my squad and product."
 dependencies:
@@ -11,5 +11,8 @@ dependencies:
     - type: "mcp"
       value: "posthog"
       description: "Confirm the selected analytics project and platform taxonomy."
+    - type: "mcp"
+      value: "event-stream"
+      description: "Optional. Prove the second channel's dataset, platform values, and property spellings."
 policy:
   allow_implicit_invocation: true

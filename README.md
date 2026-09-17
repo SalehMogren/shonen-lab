@@ -43,7 +43,7 @@ Shonen Lab is a growing marketplace of reusable Codex plugins and skills for pro
 
 | Plugin | Best for | Mission |
 | --- | --- | --- |
-| [⚡ Tracking Event QA](plugins/tracking-event-qa/README.md) | PM · PE · SWE · QA · Analytics | Verify tracking-plan events against PostHog and record evidence in Notion. |
+| [⚡ Tracking Event QA](plugins/tracking-event-qa/README.md) | PM · PE · SWE · QA · Analytics | Verify tracking-plan events on every channel they are routed to, and record evidence in Notion. |
 
 More quests are welcome—each plugin lives in its own directory and joins the shared marketplace catalog. 🌟
 

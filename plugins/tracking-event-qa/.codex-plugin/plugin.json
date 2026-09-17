@@ -1,22 +1,35 @@
 {
   "name": "tracking-event-qa",
-  "version": "0.2.0",
-  "description": "Configure and verify product analytics tracking events against PostHog, with Notion write-back and optional Jira follow-up.",
+  "version": "0.3.0",
+  "description": "Configure and verify product analytics tracking events across every channel a plan routes them to, with Notion write-back and optional Jira follow-up.",
   "author": {
     "name": "Plugin Contributors"
   },
-  "keywords": ["analytics", "qa", "tracking", "posthog", "notion", "jira"],
+  "keywords": [
+    "analytics",
+    "qa",
+    "tracking",
+    "posthog",
+    "notion",
+    "jira",
+    "event-stream",
+    "instrumentation"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Tracking Event QA",
     "shortDescription": "Verify QA analytics events with evidence.",
-    "longDescription": "Configure squad and product profiles, prove each QA-marked tracking cell against PostHog, and preview scoped Notion write-back with optional Jira follow-up.",
+    "longDescription": "Configure squad and product profiles, resolve which channels each tracking event must reach, prove every QA-marked cell against observed traffic on each channel, check property values across platforms, and preview scoped Notion write-back with optional Jira follow-up.",
     "developerName": "Plugin Contributors",
     "category": "Productivity",
-    "capabilities": ["Interactive", "Write"],
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
     "defaultPrompt": [
       "Set up tracking QA for a squad and product.",
       "Verify all tracking events currently marked QA.",
+      "Check whether any event is reaching a channel it was excluded from.",
       "Show the failed tracking events and their evidence."
     ],
     "brandColor": "#7C3AED"

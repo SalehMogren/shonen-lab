@@ -20,6 +20,12 @@ DEFAULT_PLATFORM_VALUES = {
     "backend": ["posthog-node", "posthog-python", "posthog-php", "posthog-go"],
 }
 SUPPORTED_PLATFORMS = frozenset(DEFAULT_PLATFORM_VALUES)
+STREAM_REQUIRED_FIELDS = (
+    "dataset",
+    "event_name_field",
+    "event_id_field",
+    "platform_field",
+)
 
 
 def load_store(path: Path) -> dict[str, Any]:
@@ -69,11 +75,13 @@ def validate_profile(name: str, profile: Any) -> None:
             raise SystemExit(f"Profile {name!r} needs a positive posthog.thresholds.{field}.")
     if int(thresholds["recency_days"]) > int(thresholds["lookback_days"]):
         raise SystemExit(f"Profile {name!r} needs recency_days <= lookback_days.")
+    if profile.get("stream") is not None:
+        validate_stream(name, profile["stream"])
 
 
-def validate_platform_values(name: str, value: Any) -> None:
+def validate_platform_values(name: str, value: Any, *, location: str = "posthog.platform_values") -> None:
     if not isinstance(value, dict) or not value:
-        raise SystemExit(f"Profile {name!r} needs a non-empty posthog.platform_values object.")
+        raise SystemExit(f"Profile {name!r} needs a non-empty {location} object.")
     mapped_values = 0
     for platform, values in value.items():
         if not isinstance(platform, str) or not platform.strip():
@@ -92,6 +100,42 @@ def validate_platform_values(name: str, value: Any) -> None:
         raise SystemExit(f"Profile {name!r} needs at least one mapped platform value.")
 
 
+def validate_stream(name: str, stream: Any) -> None:
+    """Validate the optional second channel: an event stream queried outside product analytics."""
+    if not isinstance(stream, dict):
+        raise SystemExit(f"Profile {name!r} stream channel must be an object.")
+    for field in STREAM_REQUIRED_FIELDS:
+        if not stream.get(field):
+            raise SystemExit(f"Profile {name!r} needs stream.{field}.")
+    validate_platform_values(name, stream.get("platform_values"), location="stream.platform_values")
+    validate_key_prefixes(name, stream.get("property_key_prefixes"))
+    excluded = stream.get("excluded_platform_values", [])
+    if not isinstance(excluded, list) or any(not isinstance(item, str) or not item.strip() for item in excluded):
+        raise SystemExit(f"Profile {name!r} stream.excluded_platform_values must be a list of non-empty strings.")
+    mapped = {value for values in stream["platform_values"].values() for value in values}
+    overlap = sorted(mapped.intersection(excluded))
+    if overlap:
+        raise SystemExit(
+            f"Profile {name!r} stream excludes mapped platform values: {', '.join(overlap)}."
+        )
+    if stream.get("property_key_field") and not stream.get("property_value_field"):
+        raise SystemExit(f"Profile {name!r} needs stream.property_value_field when a key field is set.")
+
+
+def validate_key_prefixes(name: str, value: Any) -> None:
+    """Key/value streams often prefix property names per platform; an empty prefix is valid."""
+    if value is None:
+        return
+    if not isinstance(value, dict) or not value:
+        raise SystemExit(f"Profile {name!r} stream.property_key_prefixes must be a non-empty object.")
+    for platform, prefix in value.items():
+        if platform not in SUPPORTED_PLATFORMS:
+            supported = ", ".join(sorted(SUPPORTED_PLATFORMS))
+            raise SystemExit(f"Profile {name!r} prefix platform {platform!r} is unsupported; use {supported}.")
+        if not isinstance(prefix, str):
+            raise SystemExit(f"Profile {name!r} prefix for {platform!r} must be a string.")
+
+
 def parse_platform_values(value: str) -> dict[str, list[str]]:
     try:
         parsed = json.loads(value)
@@ -102,6 +146,22 @@ def parse_platform_values(value: str) -> dict[str, list[str]]:
     except SystemExit as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
     return parsed
+
+
+def parse_key_prefixes(value: str) -> dict[str, str]:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(f"key prefixes must be valid JSON: {exc.msg}") from exc
+    try:
+        validate_key_prefixes("candidate", parsed)
+    except SystemExit as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+    return parsed
+
+
+def parse_string_list(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def atomic_write(path: Path, data: dict[str, Any]) -> None:
@@ -119,8 +179,27 @@ def atomic_write(path: Path, data: dict[str, Any]) -> None:
             temp_path.unlink()
 
 
-def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
+def stream_from_args(args: argparse.Namespace) -> dict[str, Any] | None:
+    if not args.stream_dataset:
+        return None
     return {
+        "provider": args.stream_provider,
+        "dataset": args.stream_dataset,
+        "event_name_field": args.stream_event_name_field,
+        "event_id_field": args.stream_event_id_field,
+        "property_key_field": args.stream_property_key_field,
+        "property_value_field": args.stream_property_value_field,
+        "platform_field": args.stream_platform_field,
+        "platform_values": args.stream_platform_values_json
+        or {key: list(values) for key, values in DEFAULT_PLATFORM_VALUES.items()},
+        "property_key_prefixes": args.stream_key_prefixes_json,
+        "excluded_platform_values": args.stream_excluded_values or [],
+        "plan_channel_value": args.stream_plan_value,
+    }
+
+
+def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    profile = {
         "squad": args.squad,
         "product": args.product,
         "notion": {
@@ -142,6 +221,7 @@ def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "platform_property": args.platform_property,
             "platform_values": args.platform_values_json
             or {key: list(values) for key, values in DEFAULT_PLATFORM_VALUES.items()},
+            "plan_channel_value": args.analytics_plan_value,
             "thresholds": {
                 "lookback_days": args.lookback_days,
                 "recency_days": args.recency_days,
@@ -153,6 +233,10 @@ def profile_from_args(args: argparse.Namespace) -> dict[str, Any]:
             "issue_type": args.jira_issue_type,
         },
     }
+    stream = stream_from_args(args)
+    if stream is not None:
+        profile["stream"] = stream
+    return profile
 
 
 def command_save(args: argparse.Namespace) -> None:
@@ -165,7 +249,16 @@ def command_save(args: argparse.Namespace) -> None:
     if args.activate or store["active_profile"] is None:
         store["active_profile"] = args.name
     atomic_write(args.config_path, store)
-    print(json.dumps({"saved": args.name, "active_profile": store["active_profile"], "path": str(args.config_path)}))
+    print(
+        json.dumps(
+            {
+                "saved": args.name,
+                "active_profile": store["active_profile"],
+                "path": str(args.config_path),
+                "stream_channel": bool(profile.get("stream")),
+            }
+        )
+    )
 
 
 def command_list(args: argparse.Namespace) -> None:
@@ -179,7 +272,8 @@ def command_list(args: argparse.Namespace) -> None:
         return
     for name, profile in sorted(store["profiles"].items()):
         marker = "*" if name == store["active_profile"] else " "
-        print(f"{marker} {name}: {profile['squad']} / {profile['product']}")
+        channels = "analytics + stream" if profile.get("stream") else "analytics"
+        print(f"{marker} {name}: {profile['squad']} / {profile['product']} [{channels}]")
 
 
 def command_show(args: argparse.Namespace) -> None:
@@ -205,7 +299,17 @@ def command_activate(args: argparse.Namespace) -> None:
 def command_validate(args: argparse.Namespace) -> None:
     store = load_store(args.config_path)
     validate_store(store)
-    print(json.dumps({"valid": True, "profiles": len(store["profiles"]), "active_profile": store["active_profile"]}))
+    with_stream = sum(1 for profile in store["profiles"].values() if profile.get("stream"))
+    print(
+        json.dumps(
+            {
+                "valid": True,
+                "profiles": len(store["profiles"]),
+                "active_profile": store["active_profile"],
+                "profiles_with_stream_channel": with_stream,
+            }
+        )
+    )
 
 
 def add_common_config_argument(parser: argparse.ArgumentParser) -> None:
@@ -242,9 +346,53 @@ def build_parser() -> argparse.ArgumentParser:
         type=parse_platform_values,
         help='Observed mapping as JSON, for example {"web":["web"],"app":["mobile"]}.',
     )
+    save.add_argument(
+        "--analytics-plan-value",
+        default="Posthog",
+        help="Tracking-plan value that routes an event to product analytics.",
+    )
     save.add_argument("--lookback-days", type=int, default=90)
     save.add_argument("--recency-days", type=int, default=14)
     save.add_argument("--live-volume", type=int, default=10)
+
+    save.add_argument(
+        "--stream-dataset",
+        help="Dataset or index holding the second channel. Omit to configure product analytics only.",
+    )
+    save.add_argument("--stream-provider", default="event-stream", help="Free-text provider label for reports.")
+    save.add_argument("--stream-event-name-field", default="event_name")
+    save.add_argument("--stream-event-id-field", default="event_id")
+    save.add_argument(
+        "--stream-property-key-field",
+        help="Field holding the property name in a key/value stream. Omit for column-per-property streams.",
+    )
+    save.add_argument("--stream-property-value-field", help="Field holding the property value in a key/value stream.")
+    save.add_argument(
+        "--stream-platform-field",
+        default="source",
+        help="Field the stream uses to separate platforms, for example a site or host identifier.",
+    )
+    save.add_argument(
+        "--stream-platform-values-json",
+        type=parse_platform_values,
+        help='Observed stream mapping as JSON, for example {"web":["example.test"],"app":["app.example.test"]}.',
+    )
+    save.add_argument(
+        "--stream-key-prefixes-json",
+        type=parse_key_prefixes,
+        help='Per-platform property-name prefixes, for example {"web":"attributes.","app":""}.',
+    )
+    save.add_argument(
+        "--stream-excluded-values",
+        type=parse_string_list,
+        help="Comma-separated platform values to exclude, such as staging or local hosts.",
+    )
+    save.add_argument(
+        "--stream-plan-value",
+        default="Stream",
+        help="Tracking-plan value that routes an event to the stream channel.",
+    )
+
     save.add_argument("--activate", action="store_true")
     save.add_argument("--replace", action="store_true", help="Replace an existing profile with the same name.")
     save.set_defaults(func=command_save)
